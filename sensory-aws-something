@@ -1,0 +1,108 @@
+#If you need many classes from the aws_cdk, Im using the namespace alias of `cdk` instead of importing individual classes.
+import aws_cdk as cdk
+
+# Create the load balancer in a VPC. 'internetFacing' is 'false'
+# by default, which creates an internal load balancer.
+lb = elbv2.ApplicationLoadBalancer(self, "PublicLoadBalancer",
+    vpc="vpc name from DEV/STAGE/PROD",
+    internet_facing=True
+)
+
+# Add a listener and open up the load balancer's security group
+# to the world.
+listener = lb.add_listener("Listener",
+    port=80,
+    # Need to figure out the syntax for making this a forward/redirect statement if its possible.
+    port=443
+
+    # 'open: true' is the default, you can leave it out if you want. Set it
+    # to 'false' and use `listener.connections` if you want to be selective
+    # about who can access the load balancer.
+    open=True
+)
+
+# This 'should' create an SG based on the docs. "if a security group isn't provided, one will be automatically created." 
+# https://constructs.dev/packages/@aws-cdk/aws-elasticloadbalancingv2/v/1.139.0?lang=python
+Security_group1 = ec2.SecurityGroup(self, "SG Name", vpc=vpc)
+lb = elbv2.ApplicationLoadBalancer(self, "LB Name",
+    vpc=vpc, # Need to array the VPCs in somewhere.
+    internet_facing=True,
+    security_group=security_group1
+)
+# This is an optional secondary SG. I left in in for the moment.xxxx
+security_group2 = ec2.SecurityGroup(self, "SecurityGroup2", vpc=vpc)
+lb.add_security_group(security_group2)
+
+# I dont see anything in the docs about how to create a target group. I need to come back to this.
+# TARGET GROUPS
+
+# AWS Cert Manager
+my_hosted_zone = route53.HostedZone(self, "Certificate Name",
+    zone_name="client-customer.cloud.sensory.com"
+)
+acm.Certificate(self, "Certificate Name",
+    domain_name="client-customer.cloud.sensory.com",
+    validation=acm.CertificateValidation.from_dns(my_hosted_zone)
+)
+
+# We should add a wait or cert check statement here. Ideally we'd like to a get a 200 on the cert before we advance.
+
+# This is the ECS Section
+app = cdk.App()
+
+# Need to define these variables. I dont like hard-coding, so we should pass them in as variables.
+env = {
+    "account": process.env.CDK_DEFAULT_ACCOUNT,
+    "region": process.env.CDK_DEFAULT_REGION
+}
+
+# Stack name
+stack = cdk.Stack(app, "Define stack name here", env=env)
+
+# Define the tasks
+task = ecs.FargateTaskDefinition(stack, "Task Name", cpu=256, memory_limit_mi_b=512)
+
+# add contianer into the task
+task.add_container("Ping",
+    image=ecs.ContainerImage.from_registry("915719032284.dkr.ecr.us-east-1.amazonaws.com/sensory/io:v0.6.0"),
+    command=["sh", "-c", "ping -c 3 google.com"
+    ],
+    logging=ecs.AwsLogDriver(
+        stream_prefix="Ping",
+        log_group=LogGroup(stack, "LogGroup",
+            log_group_name=f"{stack.stackName}LogGroup",
+            retention=RetentionDays.ONE_DAY
+        )
+    )
+)
+
+# deploy and run the above task once
+run_task_at_once = RunTask(stack, "Run the above task once", task=task)
+
+# Add a container to the task definition
+specific_container = task_definition.add_container("Container Name",
+    image=ecs.ContainerImage.from_registry("915719032284.dkr.ecr.us-east-1.amazonaws.com/sensory/io:v0.6.0"),
+    memory_limit_mi_b=2048
+)
+
+# Add a port mapping
+specific_container.add_port_mappings(
+    container_port=50050,
+    container_port=50051
+    protocol=ecs.Protocol.TCP
+)
+
+ecs.Ec2Service(self, "Service",
+    cluster=cluster,
+    task_definition=task_definition,
+    # I dont think we need this, bout should be reviewed.
+    # cloud_map_options=ecs.CloudMapOptions(
+        # Create SRV records - useful for bridge networking
+        # dns_record_type=cloudmap.DnsRecordType.SRV,
+        # Targets port TCP port 50050 and 50051 `specificContainer`
+        container=specific_container,
+        container_port=50050,
+        container_port=50051
+    )
+)
+
