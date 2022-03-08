@@ -1,0 +1,97 @@
+version: '2'
+
+services:
+    
+  freshrss:
+    image: linuxserver/freshrss
+    container_name: freshrss
+    restart: unless-stopped
+    environment:
+      - VIRTUAL_HOST=rss.thiesen.co
+      - LETSENCRYPT_HOST=rss.thiesen.co
+      - LETSENCRYPT_EMAIL=andrew@thiesen.co
+      - PGID=1001
+      - PUID=1000
+    volumes:
+      - ./freshrss:/config
+    ports:
+      - "667:80"
+    networks:
+      - proxy-tier
+      - default
+
+  netdata:
+    image: firehol/netdata
+    container_name: netdata
+    hostname: mon.thiesen.co
+    ports:
+      - 19999:19999
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - VIRTUAL_HOST=mon.thiesen.co
+      - LETSENCRYPT_HOST=mon.thiesen.co
+      - LETSENCRYPT_EMAIL=andrew@thiesen.co
+
+  proxy:
+    image: jwilder/nginx-proxy
+    container_name: proxy
+    restart: unless-stopped
+    labels:
+      com.github.jrcs.letsencrypt_nginx_proxy_companion.nginx_proxy: "true"
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - certs:/etc/nginx/certs:rw
+      - vhost.d:/etc/nginx/vhost.d
+      - html:/usr/share/nginx/html
+      - ./uploadsize.conf:/etc/nginx/conf.d/uploadsize.conf:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - "default"
+      - "proxy-tier"
+
+  proxy-letsencrypt:
+    image: jrcs/letsencrypt-nginx-proxy-companion
+    container_name: letsencrypt
+    restart: unless-stopped
+    environment:
+      - NGINX_PROXY_CONTAINER=proxy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    volumes_from:
+      - "proxy"
+    depends_on:
+      - "proxy"
+    networks:
+      - "default"
+      - "proxy-tier"
+
+  portainer:
+    image: portainer/portainer
+    container_name: portainer
+    restart: always
+    environment:
+      - VIRTUAL_HOST=docker.thiesen.co
+      - LETSENCRYPT_HOST=docker.thiesen.co
+      - LETSENCRYPT_EMAIL=EMAIL
+    volumes:
+      - ./portainer/:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "9000:9000"
+
+volumes:
+  certs:
+  vhost.d:
+  html:
+
+networks:
+  proxy-tier:
