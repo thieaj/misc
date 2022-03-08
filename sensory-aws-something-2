@@ -1,0 +1,60 @@
+import aws_cdk as cdk
+
+const env = {
+  account: process.env.sensory,
+  region: process.env.us-west-2,
+};
+
+# Create the ECS service(s)
+const loadBalancedFargateService = new ecsPatterns.ApplicationLoadBalancedFargateService(this, 'ServiceName', {
+  cluster,
+  memoryLimitMiB: 4096,
+  desiredCount: 1,
+  cpu: 2048,
+  taskImageOptions: {
+    image: ecs.ContainerImage.fromRegistry("915719032284.dkr.ecr.us-east-1.amazonaws.com/sensory/app::v0.X.X"),
+  },
+});
+
+const scalableTarget = loadBalancedFargateService.service.autoScaleTaskCount({
+  minCapacity: 1,
+  maxCapacity: 2,
+});
+
+
+
+# Disable ASG by default
+scalableTarget.scaleOnCpuUtilization('CpuScaling', {
+  targetUtilizationPercent: 50,
+});
+
+# Disable ASG by default
+scalableTarget.scaleOnMemoryUtilization('MemoryScaling', {
+  targetUtilizationPercent: 50,
+});
+
+# deploy and run the above task once
+run_task_at_once = RunTask(stack, "Run the above task once", task=task)
+
+# Add a port mapping
+specific_container.add_port_mappings(
+    container_port=50050,
+    container_port=50051
+    protocol=ecs.Protocol.TCP
+)
+
+# Configure log group for retention
+log_group = LogGroup(stack, "LogGroup",
+    retention=RetentionDays.TWO.WEEK
+
+# This 'should' create an SG based on the docs. "if a security group isn't provided, one will be automatically created." 
+# https://constructs.dev/packages/@aws-cdk/aws-elasticloadbalancingv2/v/1.139.0?lang=python
+Security_group1 = ec2.SecurityGroup(self, "SG Name", vpc=vpc)
+lb = elbv2.ApplicationLoadBalancer(self, "LB Name",
+    vpc=vpc, # Need to array the VPCs in somewhere.
+    internet_facing=True,
+    security_group=security_group1
+    security_group2 = ec2.SecurityGroup(self, "SecurityGroup2", vpc=vpc)
+lb.add_security_group(security_group2)
+)
+
